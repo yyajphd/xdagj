@@ -165,7 +165,6 @@ public class Kernel {
                 dbFactory.getDB(DatabaseName.TXHISTORY));
         log.info("Block Store init.");
         blockStore.init();
-
         addressStore = new AddressStoreImpl(dbFactory.getDB(DatabaseName.ADDRESS));
         addressStore.init();
         log.info("Address Store init");
@@ -267,7 +266,6 @@ public class Kernel {
         sync = new XdagSync(this);
         sync.start();
         log.info("XdagSync start...");
-
         // ====================================
         // sync block
         // ====================================
@@ -283,6 +281,8 @@ public class Kernel {
         log.info("Node to pool websocket start...");
         // register pow
         blockchain.registerListener(pow);
+        //Initialize the kernel in address to get nonce
+        new Address(this);
         if (config instanceof MainnetConfig) {
             xdagState = XdagState.WAIT;
         } else if (config instanceof TestnetConfig) {

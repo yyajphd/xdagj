@@ -24,42 +24,32 @@
 
 package io.xdag.rpc.modules.xdag;
 
-import static io.xdag.core.XdagField.FieldType.XDAG_FIELD_INPUT;
-import static io.xdag.crypto.Keys.toBytesAddress;
-import static io.xdag.rpc.ErrorCode.ERR_BALANCE_NOT_ENOUGH;
-import static io.xdag.rpc.ErrorCode.ERR_PARAM_INVALID;
-import static io.xdag.rpc.ErrorCode.ERR_TO_ADDRESS_INVALID;
-import static io.xdag.rpc.ErrorCode.ERR_VALUE_INVALID;
-import static io.xdag.rpc.ErrorCode.ERR_WALLET_UNLOCK;
-import static io.xdag.rpc.ErrorCode.SUCCESS;
-import static io.xdag.utils.BasicUtils.compareAmountTo;
-import static io.xdag.utils.BasicUtils.keyPair2Hash;
-import static io.xdag.utils.BasicUtils.pubAddress2Hash;
-
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import io.xdag.Kernel;
 import io.xdag.Wallet;
-import io.xdag.core.Address;
-import io.xdag.core.BlockWrapper;
-import io.xdag.core.ImportResult;
-import io.xdag.core.XAmount;
-import io.xdag.core.XUnit;
+import io.xdag.core.*;
 import io.xdag.rpc.Web3.CallArguments;
 import io.xdag.rpc.dto.ProcessResult;
 import io.xdag.utils.BasicUtils;
 import io.xdag.utils.WalletUtils;
 import io.xdag.utils.exception.XdagOverFlowException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.tuweni.bytes.Bytes32;
+import org.apache.tuweni.bytes.MutableBytes32;
+import org.apache.tuweni.units.bigints.UInt64;
+import org.hyperledger.besu.crypto.KeyPair;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.tuweni.bytes.Bytes32;
-import org.apache.tuweni.bytes.MutableBytes32;
-import org.hyperledger.besu.crypto.KeyPair;
+
+import static io.xdag.core.XdagField.FieldType.XDAG_FIELD_INPUT;
+import static io.xdag.crypto.Keys.toBytesAddress;
+import static io.xdag.rpc.ErrorCode.*;
+import static io.xdag.utils.BasicUtils.*;
 
 @Slf4j
 public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
@@ -79,7 +69,7 @@ public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
     @Override
     public Object personalSendTransaction(CallArguments args, String passphrase) {
 
-        log.debug("personalSendTransaction args:{}",args);
+        log.debug("personalSendTransaction args:{}", args);
 
         String from = args.from;
         String to = args.to;
@@ -88,29 +78,29 @@ public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
 
         ProcessResult result = ProcessResult.builder().code(SUCCESS.code()).build();
 
-        checkParam(value, remark,result);
+        checkParam(value, remark, result);
         if (result.getCode() != SUCCESS.code()) {
             return result.getErrMsg();
         }
 
-        Bytes32 toHash = checkTo(to,result);
+        Bytes32 toHash = checkTo(to, result);
         if (result.getCode() != SUCCESS.code()) {
             return result.getErrMsg();
         }
 
-        Bytes32 fromHash = checkFrom(from,result);
+        Bytes32 fromHash = checkFrom(from, result);
         if (result.getCode() != SUCCESS.code()) {
             return result.getErrMsg();
         }
 
-        checkPassword(passphrase,result);
+        checkPassword(passphrase, result);
         if (result.getCode() != SUCCESS.code()) {
             return result.getErrMsg();
         }
 
         // do xfer
         double amount = BasicUtils.getDouble(value);
-        doXfer(amount,fromHash,toHash,remark,result);
+        doXfer(amount, fromHash, toHash, remark, result);
 
         if (result.getCode() != SUCCESS.code()) {
             return result.getErrMsg();
@@ -119,12 +109,12 @@ public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
         }
     }
 
-    //TODO:need change
-    public void doXfer(double sendValue,Bytes32 fromAddress, Bytes32 toAddress,String remark, ProcessResult processResult) {
+    // TODO:need change
+    public void doXfer(double sendValue, Bytes32 fromAddress, Bytes32 toAddress, String remark, ProcessResult processResult) {
         XAmount amount;
         try {
             amount = XAmount.of(BigDecimal.valueOf(sendValue), XUnit.XDAG);
-        } catch (XdagOverFlowException e){
+        } catch (XdagOverFlowException e) {
             processResult.setCode(ERR_PARAM_INVALID.code());
             processResult.setErrMsg(ERR_PARAM_INVALID.msg());
             return;
@@ -147,14 +137,17 @@ public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
             for (KeyPair account : accounts) {
                 byte[] addr = toBytesAddress(account);
                 XAmount addrBalance = kernel.getAddressStore().getBalanceByAddress(addr);
+                UInt64 nonce = kernel.getAddressStore().getNonce(addr);
                 if (compareAmountTo(remain.get(), addrBalance) <= 0) {
-                    ourAccounts.put(new Address(keyPair2Hash(account), XDAG_FIELD_INPUT, remain.get(),true), account);
+                    ourAccounts.put(new Address(keyPair2Hash(account), XDAG_FIELD_INPUT, remain.get(), true, nonce),
+                            account);
                     remain.set(XAmount.ZERO);
                     break;
                 } else {
                     if (compareAmountTo(addrBalance, XAmount.ZERO) > 0) {
                         remain.set(remain.get().subtract(addrBalance));
-                        ourAccounts.put(new Address(keyPair2Hash(account), XDAG_FIELD_INPUT, addrBalance, true), account);
+                        ourAccounts.put(new Address(keyPair2Hash(account), XDAG_FIELD_INPUT, addrBalance, true, nonce),
+                                account);
                     }
                 }
             }
@@ -163,9 +156,10 @@ public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
             from.set(8, fromAddress.slice(8, 20));
             byte[] addr = from.slice(8, 20).toArray();
             // 如果余额足够
+            UInt64 nonce = kernel.getAddressStore().getNonce(addr);
             if (compareAmountTo(kernel.getAddressStore().getBalanceByAddress(addr), remain.get()) >= 0) {
                 // if (fromBlock.getInfo().getAmount() >= remain.get()) {
-                ourAccounts.put(new Address(from, XDAG_FIELD_INPUT, remain.get(), true),
+                ourAccounts.put(new Address(from, XDAG_FIELD_INPUT, remain.get(), true,nonce),
                         kernel.getWallet().getAccount(addr));
                 remain.set(XAmount.ZERO);
             }
@@ -196,7 +190,7 @@ public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
         if (StringUtils.isBlank(fromAddress)) {
             return null;
         } else {
-            return checkAddress(fromAddress,processResult);
+            return checkAddress(fromAddress, processResult);
         }
     }
 
@@ -206,11 +200,11 @@ public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
             processResult.setErrMsg(ERR_TO_ADDRESS_INVALID.msg());
             return null;
         } else {
-            return checkAddress(toAddress,processResult);
+            return checkAddress(toAddress, processResult);
         }
     }
 
-    private Bytes32 checkAddress(String address,ProcessResult processResult) {
+    private Bytes32 checkAddress(String address, ProcessResult processResult) {
 
         Bytes32 hash = null;
 
@@ -225,7 +219,7 @@ public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
         return hash;
     }
 
-    private void checkParam(String value, String remark,ProcessResult processResult) {
+    private void checkParam(String value, String remark, ProcessResult processResult) {
         try {
             double amount = BasicUtils.getDouble(value);
             if (amount < 0) {
@@ -239,7 +233,7 @@ public class XdagModuleTransactionEnabled extends XdagModuleTransactionBase {
         }
     }
 
-    private void checkPassword(String passphrase,ProcessResult result) {
+    private void checkPassword(String passphrase, ProcessResult result) {
         Wallet wallet = new Wallet(kernel.getConfig());
         try {
             boolean res = wallet.unlock(passphrase);

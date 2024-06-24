@@ -24,21 +24,29 @@
 
 package io.xdag.core;
 
+import io.xdag.Kernel;
+import io.xdag.db.AddressStore;
 import io.xdag.utils.BytesUtils;
 import io.xdag.utils.WalletUtils;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.bytes.MutableBytes32;
 import org.apache.tuweni.units.bigints.UInt64;
 
+@Slf4j
 public class Address {
 
     /**
      * 放入字段的数据 正常顺序
      */
     protected MutableBytes32 data;
+    // 账户nonce
+    @Getter
+    @Setter
+    protected UInt64 nonce;
     /**
      * 输入or输出or不带amount的输出
      */
@@ -57,6 +65,9 @@ public class Address {
     protected boolean isAddress;
 
     protected boolean parsed = false;
+    protected static AddressStore addressStore;
+    protected static Kernel kernel;
+
 
     public Address(XdagField field, Boolean isAddress) {
         this.isAddress = isAddress;
@@ -65,17 +76,23 @@ public class Address {
         parse();
     }
 
+    // Just to get the kernel
+    public Address(Kernel kernel) {
+        Address.kernel = kernel;
+        addressStore = kernel.getAddressStore();
+    }
+
     /**
      * 只用于ref 跟 maxdifflink
      */
-    public Address(Bytes32 hashLow,boolean isAddress) {
+    public Address(Bytes32 hashLow, boolean isAddress) {
         this.isAddress = isAddress;
         this.type = XdagField.FieldType.XDAG_FIELD_OUT;
         addressHash = MutableBytes32.create();
-        if(!isAddress){
+        if (!isAddress) {
             this.addressHash = hashLow.mutableCopy();
-        }else {
-            this.addressHash.set(8,hashLow.mutableCopy().slice(8,20));
+        } else {
+            this.addressHash.set(8, hashLow.mutableCopy().slice(8, 20));
         }
         this.amount = XAmount.ZERO;
         parsed = true;
@@ -93,11 +110,11 @@ public class Address {
 
     public Address(Bytes32 blockHashlow, XdagField.FieldType type, Boolean isAddress) {
         this.isAddress = isAddress;
-        if(!isAddress){
+        if (!isAddress) {
             this.data = blockHashlow.mutableCopy();
-        }else {
+        } else {
             this.data = MutableBytes32.create();
-            data.set(8,blockHashlow.mutableCopy().slice(8,20));
+            data.set(8, blockHashlow.mutableCopy().slice(8, 20));
         }
         this.type = type;
         parse();
@@ -107,11 +124,26 @@ public class Address {
     public Address(Bytes32 hash, XdagField.FieldType type, XAmount amount, Boolean isAddress) {
         this.isAddress = isAddress;
         this.type = type;
-        if(!isAddress){
+        if (!isAddress) {
             this.addressHash = hash.mutableCopy();
-        }else {
+        } else {
             this.addressHash = MutableBytes32.create();
-            this.addressHash.set(8,hash.mutableCopy().slice(8,20));
+            this.addressHash.set(8, hash.mutableCopy().slice(8, 20));
+        }
+        this.amount = amount;
+        parsed = true;
+    }
+
+    // Wallet account transfer
+    public Address(Bytes32 hash, XdagField.FieldType type, XAmount amount, Boolean isAddress, UInt64 nonce) {
+        this.isAddress = isAddress;
+        this.type = type;
+        if (!isAddress) {
+            this.addressHash = hash.mutableCopy();
+        } else {
+            this.nonce = nonce;
+            this.addressHash = MutableBytes32.create();
+            this.addressHash.set(8, hash.mutableCopy().slice(8, 20));
         }
         this.amount = amount;
         parsed = true;
@@ -120,25 +152,33 @@ public class Address {
     public Bytes getData() {
         if (this.data == null) {
             this.data = MutableBytes32.create();
-            if(!this.isAddress){
+            if (!this.isAddress) {
                 this.data.set(8, this.addressHash.slice(8, 24));
-            }else {
-                this.data.set(8, this.addressHash.slice(8,20));
+            } else {
+                this.data.set(8, this.addressHash.slice(8, 20));
             }
             UInt64 u64v = amount.toXAmount();
-            this.data.set(0, Bytes.wrap(BytesUtils.bigIntegerToBytes(u64v,8)));
+            this.data.set(0, Bytes.wrap(BytesUtils.bigIntegerToBytes(u64v, 8)));
         }
         return this.data;
     }
 
     public void parse() {
         if (!parsed) {
-            if(!isAddress){
+            if (!isAddress) {
                 this.addressHash = MutableBytes32.create();
                 this.addressHash.set(8, this.data.slice(8, 24));
-            }else {
+            } else {
                 this.addressHash = MutableBytes32.create();
-                this.addressHash.set(8,this.data.slice(8,20));
+                this.addressHash.set(8, this.data.slice(8, 20));
+                if (this.type == XdagField.FieldType.XDAG_FIELD_INPUT) {
+                    // get address nonce
+                    try {
+                        this.nonce = addressStore.getNonce(BytesUtils.byte32ToArray(this.addressHash));
+                    } catch (Exception e) {
+                        log.error(e.getMessage());
+                    }
+                }
             }
             UInt64 u64v = UInt64.fromBytes(this.data.slice(0, 8));
             this.amount = XAmount.ofXAmount(u64v.toLong());
@@ -163,9 +203,9 @@ public class Address {
 
     @Override
     public String toString() {
-        if(isAddress){
-            return "Address [" + WalletUtils.toBase58(addressHash.slice(8,20).toArray()) + "]";
-        }else {
+        if (isAddress) {
+            return "Address [" + WalletUtils.toBase58(addressHash.slice(8, 20).toArray()) + "]";
+        } else {
             return "Block Hash[" + addressHash.toHexString() + "]";
         }
     }

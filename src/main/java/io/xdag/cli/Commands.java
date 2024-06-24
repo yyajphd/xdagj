@@ -41,6 +41,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.FastDateFormat;
 import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.bytes.MutableBytes32;
+import org.apache.tuweni.units.bigints.UInt64;
 import org.bouncycastle.util.encoders.Hex;
 import org.hyperledger.besu.crypto.KeyPair;
 
@@ -218,15 +219,16 @@ public class Commands {
         for (KeyPair account : accounts) {
             byte[] addr = toBytesAddress(account);
             XAmount addrBalance = kernel.getAddressStore().getBalanceByAddress(addr);
-
+            UInt64 nonce = kernel.getAddressStore().getNonce(addr);
             if (compareAmountTo(remain.get(), addrBalance) <= 0) {
-                ourAccounts.put(new Address(keyPair2Hash(account), XDAG_FIELD_INPUT, remain.get(), true), account);
+                ourAccounts.put(new Address(keyPair2Hash(account), XDAG_FIELD_INPUT, remain.get(), true, nonce), account);
                 remain.set(XAmount.ZERO);
                 break;
             } else {
                 if (compareAmountTo(addrBalance, XAmount.ZERO) > 0) {
                     remain.set(remain.get().subtract(addrBalance));
-                    ourAccounts.put(new Address(keyPair2Hash(account), XDAG_FIELD_INPUT, addrBalance, true), account);
+                    ourAccounts.put(new Address(keyPair2Hash(account), XDAG_FIELD_INPUT, addrBalance, true, nonce),
+                            account);
                 }
             }
         }

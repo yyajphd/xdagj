@@ -24,11 +24,14 @@
 package io.xdag.db.rocksdb;
 
 import io.xdag.core.XAmount;
+import io.xdag.core.XUnit;
 import io.xdag.db.AddressStore;
 import io.xdag.utils.BytesUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.units.bigints.UInt64;
+
+import static io.xdag.utils.WalletUtils.toBase58;
 
 
 @Slf4j
@@ -44,23 +47,36 @@ public class AddressStoreImpl implements AddressStore {
 
     public void init() {
         this.AddressSource.init();
-        if(AddressSource.get(new byte[]{ADDRESS_SIZE}) == null){
-            AddressSource.put(new byte[]{ADDRESS_SIZE}, BytesUtils.longToBytes(0,false));
+        if (AddressSource.get(new byte[]{ADDRESS_SIZE}) == null) {
+            AddressSource.put(new byte[]{ADDRESS_SIZE}, BytesUtils.longToBytes(0, false));
         }
-        if(AddressSource.get(new byte[]{AMOUNT_SUM}) == null){
-            AddressSource.put(new byte[]{AMOUNT_SUM},BytesUtils.longToBytes(0,false));
+        if (AddressSource.get(new byte[]{AMOUNT_SUM}) == null) {
+            AddressSource.put(new byte[]{AMOUNT_SUM}, BytesUtils.longToBytes(0, false));
         }
+        AddressSource.keys().forEach(key -> {
+            if (BytesUtils.startsWith(key, ADDRESS)) {
+                byte[] address = BytesUtils.stripPrefix(key, ADDRESS);
+
+
+                if (AddressSource.get(BytesUtils.merge(NONCE, address)) == null) {
+                    AddressSource.put(BytesUtils.merge(NONCE, address), UInt64.ZERO.toBytes().toArray());
+                    log.info("Account Address:{}.The nonce  is {},amount is {}", toBase58(address), getNonce(address),
+                           getBalanceByAddress(address).toDecimal(9, XUnit.XDAG));
+                }
+
+            }
+        });
     }
 
     public void reset() {
         this.AddressSource.reset();
-        AddressSource.put(new byte[]{ADDRESS_SIZE}, BytesUtils.longToBytes(0,false));
-        AddressSource.put(new byte[]{AMOUNT_SUM},BytesUtils.longToBytes(0,false));
+        AddressSource.put(new byte[]{ADDRESS_SIZE}, BytesUtils.longToBytes(0, false));
+        AddressSource.put(new byte[]{AMOUNT_SUM}, BytesUtils.longToBytes(0, false));
     }
 
-    public XAmount getBalanceByAddress(byte[] address){
-        byte[] data = AddressSource.get(BytesUtils.merge(ADDRESS,address));
-        if(data == null){
+    public XAmount getBalanceByAddress(byte[] address) {
+        byte[] data = AddressSource.get(BytesUtils.merge(ADDRESS, address));
+        if (data == null) {
             log.debug("This pubkey don't exist");
             return XAmount.ZERO;
         } else {
@@ -68,24 +84,25 @@ public class AddressStoreImpl implements AddressStore {
         }
     }
 
-    public boolean addressIsExist(byte[] address){
-        return AddressSource.get(BytesUtils.merge(ADDRESS,address)) != null;
+    public boolean addressIsExist(byte[] address) {
+        return AddressSource.get(BytesUtils.merge(ADDRESS, address)) != null;
     }
 
-    public void addAddress(byte[] address){
-        AddressSource.put(BytesUtils.merge(ADDRESS,address), UInt64.ZERO.toBytes().toArray());
-        long currentSize = BytesUtils.bytesToLong(AddressSource.get(new byte[]{ADDRESS_SIZE}),0,false);
-        AddressSource.put(new byte[] {ADDRESS_SIZE},BytesUtils.longToBytes(currentSize + 1,false));
+    public void addAddress(byte[] address) {
+        AddressSource.put(BytesUtils.merge(ADDRESS, address), UInt64.ZERO.toBytes().toArray());
+        long currentSize = BytesUtils.bytesToLong(AddressSource.get(new byte[]{ADDRESS_SIZE}), 0, false);
+        AddressSource.put(new byte[]{ADDRESS_SIZE}, BytesUtils.longToBytes(currentSize + 1, false));
+        AddressSource.put(BytesUtils.merge(NONCE, address), UInt64.ZERO.toBytes().toArray());
     }
 
-    public XAmount getAllBalance(){
+    public XAmount getAllBalance() {
         UInt64 u64v = UInt64.fromBytes(Bytes.wrap(AddressSource.get(new byte[]{AMOUNT_SUM})));
         return XAmount.ofXAmount(u64v.toLong());
     }
 
     @Override
     public void saveAddressSize(byte[] addressSize) {
-        AddressSource.put(new byte[]{ADDRESS_SIZE},addressSize);
+        AddressSource.put(new byte[]{ADDRESS_SIZE}, addressSize);
     }
 
     @Override
@@ -94,28 +111,52 @@ public class AddressStoreImpl implements AddressStore {
         AddressSource.put(new byte[]{AMOUNT_SUM}, u64v.toBytes().toArray());
     }
 
-    public UInt64 getAddressSize(){
+    public UInt64 getAddressSize() {
         return UInt64.fromBytes(Bytes.wrap(AddressSource.get(new byte[]{ADDRESS_SIZE})));
     }
 
-    public void updateAllBalance(XAmount balance){
+    public void updateAllBalance(XAmount balance) {
         UInt64 u64V = balance.toXAmount();
         AddressSource.put(new byte[]{AMOUNT_SUM}, u64V.toBytes().toArray());
     }
 
-
-    //TODO：计算上移到应用层
-    public void updateBalance(byte[] address, XAmount balance){
-        if(address.length != AddressSize){
+    public void updateBalance(byte[] address, XAmount balance) {
+        if (address.length != AddressSize) {
             log.debug("The Address type is wrong");
             return;
         }
-        if(AddressSource.get(BytesUtils.merge(ADDRESS,address)) == null){
+        if (AddressSource.get(BytesUtils.merge(ADDRESS, address)) == null) {
             log.debug("This address don't exist");
             addAddress(address);
         }
         UInt64 u64V = balance.toXAmount();
-        AddressSource.put((BytesUtils.merge(ADDRESS,address)), u64V.toBytes().toArray());
+        AddressSource.put((BytesUtils.merge(ADDRESS, address)), u64V.toBytes().toArray());
+    }
+
+    // Add 1 to the nonce of the account.
+    // This nonce represents the nonce that will be filled in when the account sends a transaction next time.
+    @Override
+    public void addNonce(byte[] address) {
+        synchronized (this) {
+            byte[] key = BytesUtils.merge(NONCE, address);
+            UInt64 currentNonce = getNonce(address);
+            UInt64 newNonce = currentNonce.add(UInt64.ONE);
+            AddressSource.put(key, newNonce.toBytes().toArray());
+        }
+    }
+
+    // Get the nonce of the account
+    @Override
+    public UInt64 getNonce(byte[] address) {
+        synchronized (this) {
+            byte[] key = BytesUtils.merge(NONCE, address);
+            byte[] storedNonce = AddressSource.get(key);
+            if (storedNonce == null) {
+                return UInt64.ZERO;
+            } else {
+                return UInt64.fromBytes(Bytes.wrap(storedNonce));
+            }
+        }
     }
 
     @Override

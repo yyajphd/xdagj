@@ -28,7 +28,6 @@ import com.google.common.io.BaseEncoding;
 import com.google.common.primitives.UnsignedLong;
 import com.sun.jna.Memory;
 import com.sun.jna.Pointer;
-
 import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.MutableBytes32;
 import org.apache.tuweni.units.bigints.UInt64;
@@ -36,6 +35,7 @@ import org.apache.tuweni.units.bigints.UInt64;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 
 public class BytesUtils {
 
@@ -176,7 +176,7 @@ public class BytesUtils {
 
     /**
      * @param arrays - 字节数组
-     * @param index - 起始索引
+     * @param index  - 起始索引
      * @param length - 长度
      * @return - 子数组
      */
@@ -340,16 +340,27 @@ public class BytesUtils {
         }
     }
 
-    public static MutableBytes32 arrayToByte32(byte[] value){
+    public static MutableBytes32 arrayToByte32(byte[] value) {
         MutableBytes32 mutableBytes32 = MutableBytes32.wrap(new byte[32]);
         mutableBytes32.set(8, Bytes.wrap(value));
         return mutableBytes32;
     }
-    public static byte[] byte32ToArray(MutableBytes32 value){
-        return value.mutableCopy().slice(8,20).toArray();
+
+    public static byte[] byte32ToArray(MutableBytes32 value) {
+        return value.mutableCopy().slice(8, 20).toArray();
     }
 
     public static UnsignedLong long2UnsignedLong(long number) {
-        return UnsignedLong.valueOf(toHexString((ByteBuffer.allocate(8).putLong(number).array())),16);
+        return UnsignedLong.valueOf(toHexString((ByteBuffer.allocate(8).putLong(number).array())), 16);
+    }
+
+    public static boolean startsWith(byte[] array, byte prefix) {
+        return array[0] == prefix;
+    }
+    public static byte[] stripPrefix(byte[] array, byte prefix) {
+        if (!startsWith(array, prefix)) {
+            throw new IllegalArgumentException("Array does not start with the given prefix");
+        }
+        return Arrays.copyOfRange(array, 1, array.length);
     }
 }

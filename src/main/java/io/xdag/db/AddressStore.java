@@ -23,15 +23,16 @@
  */
 package io.xdag.db;
 
-import org.apache.tuweni.units.bigints.UInt64;
-
 import io.xdag.core.XAmount;
+import org.apache.tuweni.units.bigints.UInt64;
 
 public interface AddressStore {
 
     byte ADDRESS_SIZE = (byte) 0x10;
     byte AMOUNT_SUM = (byte) 0x20;
     byte ADDRESS = (byte) 0x30;
+    byte NONCE = (byte) 0x40;
+
 
     void init();
 
@@ -56,5 +57,9 @@ public interface AddressStore {
     void updateBalance(byte[] address, XAmount balance);
 
     void snapshotAddress(byte[] address, XAmount balance);
+
+    void addNonce(byte[] address);
+
+    UInt64 getNonce(byte[] address);
 
 }

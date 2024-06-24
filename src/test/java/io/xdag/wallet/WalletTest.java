@@ -28,11 +28,13 @@ import com.google.common.collect.Lists;
 import io.xdag.Wallet;
 import io.xdag.config.Config;
 import io.xdag.config.DevnetConfig;
+import io.xdag.core.ImportResult;
 import io.xdag.crypto.Keys;
 import io.xdag.crypto.SampleKeys;
 import io.xdag.crypto.Sign;
 import io.xdag.utils.WalletUtils;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.tuweni.units.bigints.UInt64;
 import org.hyperledger.besu.crypto.KeyPair;
 import org.jline.utils.Log;
 import org.junit.After;
@@ -48,8 +50,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-import static io.xdag.utils.BasicUtils.hash2PubAddress;
-import static io.xdag.utils.BasicUtils.keyPair2Hash;
+import static io.xdag.crypto.Keys.toBytesAddress;
+import static io.xdag.utils.BasicUtils.*;
 import static org.junit.Assert.*;
 
 public class WalletTest {
@@ -156,7 +158,7 @@ public class WalletTest {
         assertEquals(oldAccountSize, wallet.getAccounts().size());
         wallet.addAccount(key);
         assertEquals(oldAccountSize + 1, wallet.getAccounts().size());
-        wallet.removeAccount(Keys.toBytesAddress(key));
+        wallet.removeAccount(toBytesAddress(key));
         assertEquals(oldAccountSize, wallet.getAccounts().size());
     }
 
@@ -209,6 +211,20 @@ public class WalletTest {
         Log.info(keyPair2Hash(wallet.getDefKey()));
         Log.info(hash2PubAddress(keyPair2Hash(wallet.getDefKey())));
         assertTrue(WalletUtils.checkAddress(hash2PubAddress(keyPair2Hash(wallet.getDefKey()))));
+        for (KeyPair account : wallet.getAccounts()) {
+            Log.info(keyPair2Hash(account));
+            Log.info(Arrays.toString(hash2byte(keyPair2Hash(account))));
+            Log.info(Arrays.toString(toBytesAddress(account)));
+            assertArrayEquals(hash2byte(keyPair2Hash(account)), toBytesAddress(account));
+        }
+        UInt64 a = UInt64.valueOf(99);
+        UInt64 b = UInt64.valueOf(100);
+        Log.info(a.compareTo(b) < 0);
+        Log.info(UInt64.ONE.add(UInt64.ONE));
+        ImportResult result = ImportResult.INVALID_BLOCK;
+        result.setErrorInfo(String.format("Nonce is wrong, the correct nonce is:%s , your nonce " +
+                "is:%s", UInt64.ONE, UInt64.ZERO));
+        Log.info(result.getErrorInfo());
     }
 
     @After

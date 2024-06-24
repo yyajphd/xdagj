@@ -40,11 +40,7 @@ import io.xdag.db.rocksdb.SnapshotStoreImpl;
 import io.xdag.listener.BlockMessage;
 import io.xdag.listener.Listener;
 import io.xdag.listener.PretopMessage;
-import io.xdag.utils.BasicUtils;
-import io.xdag.utils.BytesUtils;
-import io.xdag.utils.WalletUtils;
-import io.xdag.utils.XdagRandomUtils;
-import io.xdag.utils.XdagTime;
+import io.xdag.utils.*;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -53,6 +49,7 @@ import org.apache.tuweni.bytes.Bytes;
 import org.apache.tuweni.bytes.Bytes32;
 import org.apache.tuweni.bytes.MutableBytes;
 import org.apache.tuweni.bytes.MutableBytes32;
+import org.apache.tuweni.units.bigints.UInt64;
 import org.bouncycastle.math.ec.ECPoint;
 import org.bouncycastle.util.Arrays;
 import org.bouncycastle.util.encoders.Hex;
@@ -209,7 +206,7 @@ public class BlockchainImpl implements Blockchain {
         xdagTopStatus.setTopDiff(lastBlock.getInfo().getDifficulty());
         xdagTopStatus.setPreTopDiff(lastBlock.getInfo().getDifficulty());
 
-        XAmount allBalance = snapshotStore.getAllBalance().add(snapshotAddressStore.getAllBalance()); //block all balance + address all balance
+        XAmount allBalance = snapshotStore.getAllBalance().add(snapshotAddressStore.getAllBalance()); // block all balance + address all balance
 
         long end = System.currentTimeMillis();
         System.out.println("init snapshotJ done");
@@ -227,6 +224,7 @@ public class BlockchainImpl implements Blockchain {
     /**
      * 尝试去连接这个块
      */
+    // todo: add nonce
     @Override
     public synchronized ImportResult tryToConnect(Block block) {
 
@@ -324,6 +322,7 @@ public class BlockchainImpl implements Blockchain {
                                 WalletUtils.toBase58(BytesUtils.byte32ToArray(ref.getAddress())));
                         return result;
                     }
+
                     // ensure TX block's input's & output's amount is enough to subtract minGas, Amount must >= 0.1;
                     if (ref != null && (ref.getType() == XDAG_FIELD_INPUT || ref.getType() == XDAG_FIELD_OUTPUT) && ref.getAmount().subtract(MIN_GAS).isNegative()) {
                         result = ImportResult.INVALID_BLOCK;
@@ -331,6 +330,26 @@ public class BlockchainImpl implements Blockchain {
                         result.setErrorInfo("Ref block's balance < minGas");
                         log.debug("Ref block's balance < minGas");
                         return result;
+                    }
+                    // 判断nonce是否符合要求
+                    if (ref != null && ref.type == XDAG_FIELD_INPUT) {
+                        UInt64 currNonce = addressStore.getNonce(BytesUtils.byte32ToArray(ref.getAddress()));
+                        UInt64 refNonce = ref.getNonce();
+                        String address = toBase58(BytesUtils.byte32ToArray(ref.getAddress()));
+                        log.info("Account Address:{}.The nonce in txBlock is {}, the nonce that actually meets the " +
+                                "requirements: >={}", address, refNonce, currNonce);
+
+                        if (refNonce == null || refNonce.compareTo(currNonce) < 0) {
+                            result = ImportResult.INVALID_BLOCK;
+                            result.setErrorInfo(String.format("Nonce is wrong, the correct nonce is:%s , your nonce " +
+                                    "is:%s", currNonce, refNonce));
+                            return result;
+                        } else {
+                            // Nonce verification is successful, nonce + 1
+                            addressStore.addNonce(BytesUtils.byte32ToArray(ref.getAddress()));
+                            log.info("address " + address + " next nonce:" +
+                                    addressStore.getNonce(BytesUtils.byte32ToArray(ref.getAddress())));
+                        }
                     }
                 }
                 /*
@@ -867,7 +886,7 @@ public class BlockchainImpl implements Blockchain {
         for (Address link : links) {
             if (!link.isAddress) {
                 Block ref = getBlockByHash(link.getAddress(), false);
-                //even mainBlock duplicate link the TX_block which other mainBlock is handled, we could check the TX ref if this mainBlock.
+                // even mainBlock duplicate link the TX_block which other mainBlock is handled, we could check the TX ref if this mainBlock.
                 if (ref.getInfo().getRef() != null
                         && equalBytes(ref.getInfo().getRef(), block.getHashLow().toArray())
                         && ((ref.getInfo().flags & BI_MAIN_REF) != 0)) {
@@ -890,15 +909,14 @@ public class BlockchainImpl implements Blockchain {
             XAmount reward = getReward(mainNumber);
             block.getInfo().setHeight(mainNumber);
             updateBlockFlag(block, BI_MAIN, true);
-
             // 接收奖励
             acceptAmount(block, reward);
             xdagStats.nmain++;
 
             // 递归执行主块引用的区块 并获取手续费
-            XAmount mainBlockFee = applyBlock(true, block); //the mainBlock may have tx, return the fee to itself.
+            XAmount mainBlockFee = applyBlock(true, block); // the mainBlock may have tx, return the fee to itself.
             if (!mainBlockFee.equals(XAmount.ZERO)) {// normal mainBlock will not go into this
-                acceptAmount(block, mainBlockFee); //add the fee
+                acceptAmount(block, mainBlockFee); // add the fee
                 block.getInfo().setFee(mainBlockFee);
             }
             // 主块REF指向自身
