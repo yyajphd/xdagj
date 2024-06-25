@@ -181,7 +181,10 @@ public class Commands {
                 hash = pubAddress2Hash(address);
                 key.set(8, Objects.requireNonNull(hash).slice(8, 20));
                 XAmount balance = kernel.getAddressStore().getBalanceByAddress(fromBase58(address));
-                return String.format("Account balance: %s XDAG", balance.toDecimal(9, XUnit.XDAG).toPlainString());
+                UInt64 nonce = kernel.getAddressStore().getNonce(fromBase58(address));
+                return String.format("Account balance: %s XDAG [Nonce:%d]",
+                        balance.toDecimal(9, XUnit.XDAG).toPlainString()
+                        , nonce.toLong());
             } else {
                 if (StringUtils.length(address) == 32) {
                     hash = address2Hash(address);
