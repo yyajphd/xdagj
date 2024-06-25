@@ -151,6 +151,8 @@ public class Commands {
                     .append(" ")
                     .append(kernel.getAddressStore().getBalanceByAddress(toBytesAddress(keyPair)).toDecimal(9, XUnit.XDAG).toPlainString())
                     .append(" XDAG")
+                    .append("  ")
+                    .append("[Nonce:").append(kernel.getAddressStore().getNonce(toBytesAddress(keyPair))).append("]")
                     .append("\n");
             num--;
         }
