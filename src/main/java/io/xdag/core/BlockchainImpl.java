@@ -454,7 +454,11 @@ public class BlockchainImpl implements Blockchain {
 //                result = ImportResult.IMPORTED_EXTRA;
             } else {
                 saveBlock(block);
-                orphanBlockStore.addOrphan(block);
+                // 1. prohibited non-mining node set Tx pool,
+                // 2. all nodes temporarily close tx pool when syncing.
+                if (kernel.getConfig().getEnableGenerateBlock() && kernel.getPow() != null) {
+                    orphanBlockStore.addOrphan(block);
+                }
                 xdagStats.nnoref++;
             }
             blockStore.saveXdagStatus(xdagStats);
@@ -1561,7 +1565,9 @@ public class BlockchainImpl implements Blockchain {
     }
 
     public void checkState() {
-        if (kernel.getXdagState() == XdagState.SDST || XdagState.STST == kernel.getXdagState() || XdagState.SYNC == kernel.getXdagState()) {
+        // Prohibit Non-mining nodes generate link blocks
+        if (kernel.getConfig().getEnableGenerateBlock() &&
+                (kernel.getXdagState() == XdagState.SDST || XdagState.STST == kernel.getXdagState() || XdagState.SYNC == kernel.getXdagState())) {
             checkOrphan();
         }
         checkMain();
