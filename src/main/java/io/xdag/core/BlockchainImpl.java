@@ -273,6 +273,7 @@ public class BlockchainImpl implements Blockchain {
             }
 
             List<Address> all = block.getLinks().stream().distinct().toList();
+
             // TODO：新地址转账判断inputs的地址余额是否足够
             // 检查区块的引用区块是否都存在,对所有input和output放入block（可能在pending或db中取出）
             for (Address ref : all) {
@@ -346,6 +347,7 @@ public class BlockchainImpl implements Blockchain {
                             return result;
                         } else {
                             // Nonce verification is successful, nonce + 1
+                            //todo:nonce的增加方式需要改变，同一个账户发起的多笔交易，必须按照nonce的顺序执行
                             addressStore.addNonce(BytesUtils.byte32ToArray(ref.getAddress()));
                             log.info("address " + address + " next nonce:" +
                                     addressStore.getNonce(BytesUtils.byte32ToArray(ref.getAddress())));

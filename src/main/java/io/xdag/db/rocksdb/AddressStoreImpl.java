@@ -60,8 +60,7 @@ public class AddressStoreImpl implements AddressStore {
 
                 if (AddressSource.get(BytesUtils.merge(NONCE, address)) == null) {
                     AddressSource.put(BytesUtils.merge(NONCE, address), UInt64.ZERO.toBytes().toArray());
-                    log.info("Account Address:{}.The nonce  is {},amount is {}", toBase58(address), getNonce(address),
-                           getBalanceByAddress(address).toDecimal(9, XUnit.XDAG));
+                    log.info("Account Address:{}.The nonce  is {},amount is {}", toBase58(address), getNonce(address), getBalanceByAddress(address).toDecimal(9, XUnit.XDAG));
                 }
 
             }
@@ -137,8 +136,8 @@ public class AddressStoreImpl implements AddressStore {
     // This nonce represents the nonce that will be filled in when the account sends a transaction next time.
     @Override
     public void addNonce(byte[] address) {
+        byte[] key = BytesUtils.merge(NONCE, address);
         synchronized (this) {
-            byte[] key = BytesUtils.merge(NONCE, address);
             UInt64 currentNonce = getNonce(address);
             UInt64 newNonce = currentNonce.add(UInt64.ONE);
             AddressSource.put(key, newNonce.toBytes().toArray());
@@ -148,14 +147,12 @@ public class AddressStoreImpl implements AddressStore {
     // Get the nonce of the account
     @Override
     public UInt64 getNonce(byte[] address) {
-        synchronized (this) {
-            byte[] key = BytesUtils.merge(NONCE, address);
-            byte[] storedNonce = AddressSource.get(key);
-            if (storedNonce == null) {
-                return UInt64.ZERO;
-            } else {
-                return UInt64.fromBytes(Bytes.wrap(storedNonce));
-            }
+        byte[] key = BytesUtils.merge(NONCE, address);
+        byte[] storedNonce = AddressSource.get(key);
+        if (storedNonce == null) {
+            return UInt64.ZERO;
+        } else {
+            return UInt64.fromBytes(Bytes.wrap(storedNonce));
         }
     }
 
